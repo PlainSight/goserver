@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
+	"strings"
 )
 
 func checkError(err error) {
@@ -15,96 +15,60 @@ func checkError(err error) {
 	}
 }
 
-func createRoom(name string, id int, password string) room {
-	messageChannel := make(chan message, 1000)
-
-	r := room{
-		id:   id,
-		name: name,
-		comm: messageChannel,
-	}
-
-	return r
-}
-
 func main() {
 	fmt.Printf("starting server\n")
 
-	ServerAddr, err := net.ResolveUDPAddr("udp", ":3000")
+	serverAddr, err := net.ResolveUDPAddr("udp", ":3000")
 
 	checkError(err)
 
-	ServerConnection, err := net.ListenUDP("udp", ServerAddr)
+	serverConnection, err := net.ListenUDP("udp", serverAddr)
 
 	checkError(err)
-	defer ServerConnection.Close()
+	defer serverConnection.Close()
 
 	buffer := make([]byte, 1024)
 
 	//jsonDecoder := json.NewDecoder()
 
-	var rooms [20]room
+	var relays [20]relay
 
-	dr := createRoom("default", 0, "")
-	roomCount := 0
-	rooms[roomCount] = dr
-	roomCount++
+	defaultRoom := createRoom("default", 0, "")
+	relayCount := 0
+	relays[relayCount] = &defaultRoom
+	relayCount++
 
-	go dr.process()
+	go defaultRoom.process()
 
-	i := 0
-
-	for {
-		messageLength, address, error := ServerConnection.ReadFromUDP(buffer)
-
-		m := string(buffer[0:messageLength])
-
-		fmt.Printf("Received Data: %s %s %v\n", m, address.IP.String(), address.Port)
-
-		ServerConnection.WriteToUDP(buffer[0:messageLength], address)
+	for i := 0 ;; i++ {
+		messageLength, address, error := serverConnection.ReadFromUDP(buffer)
 
 		if error != nil {
 			fmt.Printf("Error: %s\n", error)
 		}
+
+		b := buffer[0:messageLength]
+		m := string(b)
+
+		fmt.Printf("Received Data: %s %s %v\n", m, address.IP.String(), address.Port)
+
+		client := getClient(address, strings.TrimSpace(m))
+
+		client.writeToClient(serverConnection, m)
 
 		smessage := message{
 			id:      i,
 			content: m,
 		}
 
-		for r := 0; r < roomCount; r++ {
-			rooms[r].comm <- smessage
+		for r := 0; r < relayCount; r++ {
+			relays[r].pass(smessage)
 		}
-
-		i++
 	}
-
-}
-
-func readNetwork() {
 
 }
 
 type message struct {
 	id      int
 	content string
-}
-
-type room struct {
-	id   int
-	name string
-	comm chan message
-}
-
-func (room *room) process() {
-	fmt.Println("processing room", room.name)
-
-	for {
-		time.Sleep(2 * time.Second)
-
-		m := <-room.comm
-
-		fmt.Println("room", room.name, "received", m.content)
-
-	}
 }
