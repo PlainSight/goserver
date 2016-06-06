@@ -54,7 +54,7 @@ func main() {
 
 		client := getClient(address, strings.TrimSpace(m))
 
-		client.writeToClient(serverConnection, m)
+		client.write(serverConnection, m)
 
 		smessage := message{
 			id:      i,
